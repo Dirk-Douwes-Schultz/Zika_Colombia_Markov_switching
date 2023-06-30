@@ -91,7 +91,7 @@ dpt <- all %>%
 dpt$dpto <- factor(dpt$DPTO, labels = seq(1:33))
 dpto <- as.numeric(dpt$dpto)
 
-#also need S_it=NA if y_it=0 and S_it=1 if y_it>0
+#also need S_it=NA if y_it=0 and S_it=3 if y_it>0
 S <- matrix(nrow=nareas,ncol=nweeks)
 for(i in 1:nareas){
   for(t in 1:nweeks){
@@ -272,6 +272,7 @@ Cdengee <- compileNimble(dengeemodel)
 
 
 #now it drafts and tests a FFBS sampler
+#the testing is commented out as it takes a while to run
 #testing
 #model$getLogProb()
 
