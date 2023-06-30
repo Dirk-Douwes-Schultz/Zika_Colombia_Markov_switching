@@ -1,5 +1,5 @@
 #code to run the zero-state space-time Markov switching model from the paper
-#will run the model on the zika data and check convergence
+#will run the model on the Zika data and check convergence
 rm(list=ls())
 
 # Packages ----------------------------------------------------------------
