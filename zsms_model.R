@@ -1,5 +1,5 @@
 #code to run the zero-state space-time Markov switching model from the paper
-#preliminary still needs cleaning and some additions
+#will run the model on the zika data and check convergence
 rm(list=ls())
 
 # Packages ----------------------------------------------------------------
@@ -17,7 +17,9 @@ setwd("~/GitHub/Zika_Colombia_Markov_switching")
 
 # Data --------------------------------------------------------------------
 
-load("cases_and_covariables_allColombia_2014-2016.RData") 
+load("zika_cases_covariates_colombia.RData") 
+all <- zika
+rm(zika)
 
 #cases_it=y_it
 zika <- all %>% 
@@ -98,8 +100,6 @@ for(i in 1:nareas){
     }
   }
 }
-
-#S[,1] <- 1
 
 
 # Model -------------------------------------------------------------------
@@ -271,7 +271,7 @@ dengeemodel <- nimbleModel(dengeeCode, dengeeConsts, dengeeData, inits)
 Cdengee <- compileNimble(dengeemodel)
 
 
-#now I need to draft a FFBS sampler
+#now it drafts and tests a FFBS sampler
 #testing
 #model$getLogProb()
 
