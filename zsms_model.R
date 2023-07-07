@@ -91,7 +91,8 @@ dpt <- all %>%
 dpt$dpto <- factor(dpt$DPTO, labels = seq(1:33))
 dpto <- as.numeric(dpt$dpto)
 
-#also need S_it=NA if y_it=0 and S_it=3 if y_it>0
+#need S_it=NA if y_it=0 and S_it=3 if y_it>0
+#setting S_it=NA will make Nimble treat it as an unknown parameter
 S <- matrix(nrow=nareas,ncol=nweeks)
 for(i in 1:nareas){
   for(t in 1:nweeks){
@@ -125,9 +126,11 @@ dengeeConsts <- list(N=nareas,
 
 dengeeData <- list(y=cases,S=S) 
 
+#model code, note not all parameters are named the same as in the text
 dengeeCode <- nimbleCode({
   
-  #priors
+  ##priors
+  #department specific random intercepts
   for (i in 1:33) {
     beta0[i] ~ dnorm(beta0cent, precision_beta0)
     alpha1[i] ~ dnorm(alphacent1, precision_alpha1)
@@ -166,6 +169,7 @@ dengeeCode <- nimbleCode({
   #alpha[6] ~ dnorm(0, sd = 5)
   alpha[7] ~ dnorm(0, sd = 1.82)
   
+  #municipality specific random intercepts
   for(i in 1:N){
     b0[i] ~ dnorm(beta0[dpto[i]]+
                     beta3*pop[i] +
@@ -178,10 +182,11 @@ dengeeCode <- nimbleCode({
   precision_b0 ~ dgamma(.1,.1)
   precision_b ~ dgamma(.1,.1)
   
-  #likelihood
+  ##likelihood
   indi[1:3] <- c(0,0,1)
   for(i in 1:N) {
     for(t in 2:T){
+      #Equation 2, the expected reported cases when Zika is present
       mup[i,t] <- exp(b0[i] + 
                         beta1*Rain[i,t] +
                         beta2*Temp[i,t] +
@@ -198,17 +203,19 @@ dengeeCode <- nimbleCode({
       # yfit[i,t] ~ dpois(mu[i,t])
     }
   }
-  #markov chain
+  ##markov chain
   init_probs[1:3] <- c(.95,0,.05)
   for(i in 1:N) {
     S[i,1] ~  dcat(init_probs[1:3])
     for(t in 2:T){ 
       
       #calc transition matrix
+      #Equation 4
       tm[i,t,1,1:3] <- c(1-p13[i,t],0,p13[i,t])
       tm[i,t,2,1:3] <- c(0,1-p23[i,t],p23[i,t])
       tm[i,t,3,1:3] <- c(0,1-p33[i,t],p33[i,t])
       
+      #Equation 5, the probability of Zika emergence
       logit(p13[i,t]) <- alpha1[dpto[i]]+
         alpha[2]*pop[i] +
         alpha[3]*Temp[i,t] +
@@ -218,6 +225,7 @@ dengeeCode <- nimbleCode({
         alpha[10]*nbi[i] +
         alpha[11]*hum[i,t] 
       
+      #Equation 6, the probability of Zika re-emergence
       logit(p23[i,t]) <- alpha5[dpto[i]]+
         alpha[2]*pop[i] +
         alpha[3]*Temp[i,t] +
@@ -227,6 +235,7 @@ dengeeCode <- nimbleCode({
         alpha[10]*nbi[i] +
         alpha[11]*hum[i,t]
       
+      #Equation 7, the probability of Zika persistence
       logit(p33[i,t]) <- alpha6[dpto[i]]+
         alpha[7]*(lpsi[i,t-1]-mlpsi) +
         alpha[12]*pop[i]
@@ -236,6 +245,7 @@ dengeeCode <- nimbleCode({
   }
 })
 
+#random initial values for the unknown parameters
 inits <- list(beta0 = rnorm(n=33,mean=0,sd=.1),
               beta0cent = rnorm(n=1,mean=0,sd=.01),
               beta1 = rnorm(n=1,mean=0,sd=.01),
@@ -272,6 +282,8 @@ Cdengee <- compileNimble(dengeemodel)
 
 
 #now it drafts and tests a FFBS sampler
+#the FFBS sampler will efficiently jointly sample all unknown state indicators in a municipality
+#see https://link.springer.com/book/10.1007/978-0-387-35768-3 Section 11.5.6 for instance
 #the testing is commented out as it takes a while to run
 #testing
 #model$getLogProb()
@@ -383,6 +395,8 @@ for(izt in startizt:(numnodes)){
 # model$getLogProb()
 # model$calculate()
 
+#the FFBS sampler will efficiently jointly sample all unknown state indicators in a municipality
+#see https://link.springer.com/book/10.1007/978-0-387-35768-3 Section 11.5.6 for instance
 FFBS <- nimbleFunction(
   
   contains = sampler_BASE,
@@ -520,7 +534,7 @@ dengeeMCMC <- buildMCMC(dengeeConf)
 
 CdengeeMCMC <- compileNimble(dengeeMCMC, project = dengeemodel, resetFunctions = TRUE)
 
-
+#random initial values for Gibbs sampler
 initsFunction <- function() list(beta0 = rnorm(n=33,mean=0,sd=.1),
                                  beta0cent = rnorm(n=1,mean=0,sd=.01),
                                  beta1 = rnorm(n=1,mean=0,sd=.01),
@@ -552,6 +566,9 @@ initsFunction <- function() list(beta0 = rnorm(n=33,mean=0,sd=.1),
                                  r2=runif(n=1,min=0,max=20))
 
 
+#will run the Gibbs sampler
+#It will run 3 chains, each with 400,000 iterations and a burn-in of 100,000
+#It only keeps every 75th iteration to save memory, for a total of 300,000/75=4,000 iterations per chain
 samples <- runMCMC(CdengeeMCMC, 
                    niter = 400000,
                    nchains = 3, 
@@ -570,7 +587,9 @@ parameter_vector <- c(paste0("beta0[",1:33,"]"),paste0("alpha1[",1:33,"]"),
                       "precision_b","precision_b0","rho")
 
 #check convergence
+#gives the Gelman-Rubin statistics, the upper CIs should all be <1.05
 gelman.diag(samples[,parameter_vector])
+#gives the minimum effective sample size across all parameters, should be >1,000
 min(effectiveSize(samples[,parameter_vector]))
 
 #test the municipal intercepts
